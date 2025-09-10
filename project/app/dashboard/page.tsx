@@ -1,6 +1,6 @@
 'use client'
 
-import { useFirebaseAuth } from '@/hooks/useFirebaseAuth'
+import { useAuth } from '@/contexts/AuthContext'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,8 +10,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Copy, Plus, TrendingUp, Users, DollarSign, Settings } from 'lucide-react'
-import { useToast } from '@/hooks/use-toast'
+import { Copy, Plus, TrendingUp, Users, DollarSign, Settings, LogOut } from 'lucide-react'
+import { toast } from 'sonner'
+import { logOut } from '@/services/authService'
 
 interface TipButton {
   _id: string
@@ -43,7 +44,7 @@ interface Analytics {
 }
 
 export default function Dashboard() {
-  const { data: session, status } = useSession()
+  const { user, loading } = useAuth()
   const [tipButtons, setTipButtons] = useState<TipButton[]>([])
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -58,15 +59,20 @@ export default function Dashboard() {
   })
 
   useEffect(() => {
-    if (status === 'authenticated') {
+    if (user) {
       fetchTipButtons()
       fetchAnalytics()
     }
-  }, [status])
+  }, [user])
 
   const fetchTipButtons = async () => {
     try {
-      const response = await fetch('/api/tip-buttons')
+      const token = await user?.getIdToken()
+      const response = await fetch('/api/tip-buttons', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
       if (response.ok) {
         const data = await response.json()
         setTipButtons(data)
@@ -80,7 +86,12 @@ export default function Dashboard() {
 
   const fetchAnalytics = async () => {
     try {
-      const response = await fetch('/api/analytics')
+      const token = await user?.getIdToken()
+      const response = await fetch('/api/analytics', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
       if (response.ok) {
         const data = await response.json()
         setAnalytics(data)
@@ -93,9 +104,13 @@ export default function Dashboard() {
   const createTipButton = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const token = await user?.getIdToken()
       const response = await fetch('/api/tip-buttons', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(newButton)
       })
 
@@ -128,7 +143,43 @@ export default function Dashboard() {
     return `<iframe src="${window.location.origin}/tip/${slug}" width="300" height="400" frameborder="0"></iframe>`
   }
 
-  if (status === 'loading') {
+  const connectRazorpay = async () => {
+    try {
+      const token = await user?.getIdToken()
+      // In a real app, you'd integrate with Razorpay's onboarding flow
+      // For now, we'll simulate a successful connection
+      const account_id = `acc_${Math.random().toString(36).substring(7)}`
+      
+      const response = await fetch('/api/razorpay-connect', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ account_id })
+      })
+
+      if (response.ok) {
+        toast.success('Razorpay account connected successfully!')
+      } else {
+        const error = await response.json()
+        toast.error(error.error || 'Failed to connect Razorpay')
+      }
+    } catch (error) {
+      toast.error('Failed to connect Razorpay')
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await logOut()
+      router.push('/')
+    } catch (error) {
+      toast.error('Failed to log out')
+    }
+  }
+
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -139,7 +190,8 @@ export default function Dashboard() {
     )
   }
 
-  if (status !== 'authenticated') {
+  if (!user) {
+    window.location.href = '/auth/signin'
     return null
   }
 
@@ -151,20 +203,25 @@ export default function Dashboard() {
           <div className="flex justify-between items-center py-6">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-              <p className="text-gray-600">Welcome back, {session?.user?.name || session?.user?.email}</p>
+              <p className="text-gray-600">Welcome back, {user?.displayName || user?.email}</p>
             </div>
-            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Tip Button
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Create New Tip Button</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={createTipButton} className="space-y-4">
+            <div className="flex items-center gap-3">
+              <Button onClick={handleLogout} variant="outline" size="sm">
+                <LogOut className="h-4 w-4 mr-2" />
+                Log Out
+              </Button>
+              <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Tip Button
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Create New Tip Button</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={createTipButton} className="space-y-4">
                   <div>
                     <Label htmlFor="slug">URL Slug</Label>
                     <Input
@@ -225,9 +282,10 @@ export default function Dashboard() {
                   <Button type="submit" className="w-full">
                     Create Tip Button
                   </Button>
-                </form>
-              </DialogContent>
-            </Dialog>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
         </div>
       </div>
@@ -435,7 +493,7 @@ export default function Dashboard() {
                     <p className="text-sm text-yellow-700 mt-1">
                       You need to connect your Razorpay account to receive payments from tips.
                     </p>
-                    <Button className="mt-3" variant="outline">
+                    <Button className="mt-3" variant="outline" onClick={connectRazorpay}>
                       Connect Razorpay
                     </Button>
                   </div>

@@ -1,54 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import connectDB from '@/lib/mongodb'
-import User from '@/lib/models/User'
-import Tip from '@/lib/models/Tip'
+import { getFirebaseUser } from '@/lib/auth'
+import { adminDb } from '@/lib/firebaseAdmin'
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession()
-    if (!session?.user?.email) {
+    const firebaseUser = await getFirebaseUser(req)
+    if (!firebaseUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    await connectDB()
-
-    // Get user
-    const user = await User.findOne({ email: session.user.email })
+    // Get user from Firestore
+    const userDoc = await adminDb.collection('users').doc(firebaseUser.uid).get()
+    const user = userDoc.data()
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Get analytics data
+    // Get analytics data from Firestore
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-    // Total tips
-    const allTips = await Tip.find({
-      user_id: user._id,
-      status: 'completed'
-    }).select('amount creator_amount')
+    // Get tips collection
+    const tipsSnapshot = await adminDb.collection('tips')
+      .where('user_id', '==', firebaseUser.uid)
+      .where('status', '==', 'completed')
+      .get()
 
-    // Last 30 days tips
-    const recentTips = await Tip.find({
-      user_id: user._id,
-      status: 'completed',
-      createdAt: { $gte: thirtyDaysAgo }
-    }).select('amount creator_amount createdAt')
+    const allTips = tipsSnapshot.docs.map(doc => doc.data())
 
-    // Recent supporters
-    const supporters = await Tip.find({
-      user_id: user._id,
-      status: 'completed'
-    })
-    .select('supporter_name supporter_email amount createdAt')
-    .sort({ createdAt: -1 })
-    .limit(10)
+    // Filter recent tips
+    const recentTips = allTips.filter(tip => 
+      new Date(tip.createdAt.toDate ? tip.createdAt.toDate() : tip.createdAt) >= thirtyDaysAgo
+    )
 
-    const totalAmount = allTips.reduce((sum, tip) => sum + tip.amount, 0)
-    const totalEarnings = allTips.reduce((sum, tip) => sum + tip.creator_amount, 0)
-    const recentAmount = recentTips.reduce((sum, tip) => sum + tip.amount, 0)
-    const recentEarnings = recentTips.reduce((sum, tip) => sum + tip.creator_amount, 0)
+    // Get recent supporters (last 10)
+    const supportersSnapshot = await adminDb.collection('tips')
+      .where('user_id', '==', firebaseUser.uid)
+      .where('status', '==', 'completed')
+      .orderBy('createdAt', 'desc')
+      .limit(10)
+      .get()
+
+    const supporters = supportersSnapshot.docs.map(doc => doc.data())
+
+    const totalAmount = allTips.reduce((sum, tip) => sum + (tip.amount || 0), 0)
+    const totalEarnings = allTips.reduce((sum, tip) => sum + (tip.creator_amount || 0), 0)
+    const recentAmount = recentTips.reduce((sum, tip) => sum + (tip.amount || 0), 0)
+    const recentEarnings = recentTips.reduce((sum, tip) => sum + (tip.creator_amount || 0), 0)
 
     return NextResponse.json({
       total: {

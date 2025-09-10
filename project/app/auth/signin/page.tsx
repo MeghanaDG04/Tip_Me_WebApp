@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -9,6 +10,7 @@ import { ArrowLeft } from 'lucide-react'
 import { googleLogin, logIn, signUp } from '@/services/authService'
 
 export default function SignIn() {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
@@ -25,6 +27,7 @@ export default function SignIn() {
       } else {
         await signUp(email, password, name || email.split('@')[0])
       }
+      router.push('/dashboard')
     } catch (err:any) {
       setError(err?.message || 'Something went wrong')
     } finally {
@@ -75,7 +78,25 @@ export default function SignIn() {
               <span className="px-2 text-xs uppercase tracking-wider text-gray-400 bg-white">or</span>
             </div>
 
-            <Button type="button" onClick={()=>googleLogin()} className="w-full" variant="outline">
+            <Button type="button" onClick={async()=>{
+              try {
+                setLoading(true)
+                const result = await googleLogin()
+                // If result is null, it means redirect was used instead of popup
+                if (result) {
+                  router.push('/dashboard')
+                }
+                // If redirect was used, the page will reload and user will be authenticated
+              } catch (err: any) {
+                if (err.code === 'auth/popup-blocked') {
+                  setError('Popup was blocked. Please allow popups for this site or try again.')
+                } else {
+                  setError(err?.message || 'Something went wrong')
+                }
+              } finally {
+                setLoading(false)
+              }
+            }} className="w-full" variant="outline" disabled={loading}>
               Continue with Google
             </Button>
 

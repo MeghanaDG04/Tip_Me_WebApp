@@ -1,24 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/firebase'
-import { collection, query, where, getDocs, addDoc, Timestamp } from 'firebase/firestore'
+import { getFirebaseUser } from '@/lib/auth'
+import { adminDb } from '@/lib/firebaseAdmin'
+
+export async function GET(req: NextRequest) {
+  try {
+    const firebaseUser = await getFirebaseUser(req)
+    if (!firebaseUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const snapshot = await adminDb.collection('tip_buttons')
+      .where('user_uid', '==', firebaseUser.uid)
+      .get()
+
+    const tipButtons = snapshot.docs.map(doc => ({
+      _id: doc.id,
+      ...doc.data()
+    }))
+
+    return NextResponse.json(tipButtons)
+  } catch (e) {
+    console.error(e)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const { user_uid, slug, title, description, suggested_amount, thank_you_message } = await req.json()
-
-    if (!user_uid) {
-      return NextResponse.json({ error: 'Missing user_uid' }, { status: 400 })
+    const firebaseUser = await getFirebaseUser(req)
+    if (!firebaseUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { slug, title, description, suggested_amount, thank_you_message } = await req.json()
+
     // Check slug uniqueness
-    const q = query(collection(db, 'tip_buttons'), where('slug', '==', slug))
-    const existing = await getDocs(q)
-    if (!existing.empty) {
+    const existingSnapshot = await adminDb.collection('tip_buttons')
+      .where('slug', '==', slug)
+      .get()
+    
+    if (!existingSnapshot.empty) {
       return NextResponse.json({ error: 'Slug already exists' }, { status: 400 })
     }
 
-    const docRef = await addDoc(collection(db, 'tip_buttons'), {
-      user_uid,
+    const docRef = await adminDb.collection('tip_buttons').add({
+      user_uid: firebaseUser.uid,
       slug,
       title,
       description,
@@ -26,8 +52,8 @@ export async function POST(req: NextRequest) {
       thank_you_message,
       currency: 'INR',
       is_active: true,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     })
 
     return NextResponse.json({ id: docRef.id })

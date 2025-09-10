@@ -1,33 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import connectDB from '@/lib/mongodb'
-import User from '@/lib/models/User'
+import { getFirebaseUser } from '@/lib/auth'
+import { adminDb } from '@/lib/firebaseAdmin'
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession()
-    if (!session?.user?.email) {
+    const firebaseUser = await getFirebaseUser(req)
+    if (!firebaseUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const { account_id } = await req.json()
 
-    await connectDB()
-
-    // Update user with Razorpay account ID
-    const user = await User.findOneAndUpdate(
-      { email: session.user.email },
-      {
-        razorpay_account_id: account_id,
-        onboarding_completed: true,
-        updatedAt: new Date(),
-      },
-      { new: true }
-    )
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    if (!adminDb) {
+      return NextResponse.json({ error: 'Firebase Admin not configured' }, { status: 500 })
     }
+
+    // Update user with Razorpay account ID in Firestore
+    await adminDb.collection('users').doc(firebaseUser.uid).set({
+      razorpay_account_id: account_id,
+      onboarding_completed: true,
+      updatedAt: new Date(),
+    }, { merge: true })
 
     return NextResponse.json({ success: true })
   } catch (error) {

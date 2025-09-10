@@ -1,4 +1,4 @@
-# Firebase Setup (Replaced NextAuth + MongoDB)
+# Firebase Setup 
 
 - Configure Firebase in `lib/firebase.ts` (already filled with your config).
 - Visit `/auth/signin` to log in with email/password or Google.
