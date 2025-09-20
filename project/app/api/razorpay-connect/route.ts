@@ -11,22 +11,20 @@ export async function POST(req: NextRequest) {
 
     const { account_id } = await req.json()
 
-    // For now, skip Firestore storage and just return success
-    // TODO: Set up Firestore database in Firebase Console to enable this
-    console.log('Simulating Razorpay connection for user:', firebaseUser.uid, 'with account:', account_id)
-    
-    /* 
     if (!adminDb) {
       return NextResponse.json({ error: 'Firebase Admin not configured' }, { status: 500 })
     }
+
+    console.log('Connecting Razorpay for user:', firebaseUser.uid, 'with account:', account_id)
 
     // Update user with Razorpay account ID in Firestore
     await adminDb.collection('users').doc(firebaseUser.uid).set({
       razorpay_account_id: account_id,
       onboarding_completed: true,
       updatedAt: new Date(),
+      email: firebaseUser.email,
+      name: firebaseUser.name || firebaseUser.email?.split('@')[0]
     }, { merge: true })
-    */
 
     return NextResponse.json({ success: true })
   } catch (error) {

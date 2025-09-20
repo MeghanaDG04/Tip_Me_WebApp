@@ -9,11 +9,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // For now, return empty array since Firestore isn't set up yet
-    // TODO: Set up Firestore database in Firebase Console to enable this
-    console.log('Simulating tip buttons fetch for user:', firebaseUser.uid);
+    if (!adminDb) {
+      return NextResponse.json({ error: 'Database not available' }, { status: 500 })
+    }
+
+    console.log('Fetching tip buttons for user:', firebaseUser.uid);
     
-    /* 
     const snapshot = await adminDb.collection('tip_buttons')
       .where('user_uid', '==', firebaseUser.uid)
       .get()
@@ -22,12 +23,11 @@ export async function GET(req: NextRequest) {
       _id: doc.id,
       ...doc.data()
     }))
-    */
 
-    const tipButtons = []; // Temporary empty array
+    console.log('Found tip buttons:', tipButtons.length);
     return NextResponse.json(tipButtons)
   } catch (e) {
-    console.error(e)
+    console.error('Error fetching tip buttons:', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -49,15 +49,6 @@ export async function POST(req: NextRequest) {
     
     const { slug, title, description, suggested_amount, thank_you_message } = body
 
-    // For now, skip Firestore and simulate success
-    // TODO: Set up Firestore database in Firebase Console to enable this
-    console.log('Simulating tip button creation for user:', firebaseUser.uid);
-    console.log('Tip button data:', { slug, title, description, suggested_amount });
-    
-    // Simulate document ID
-    const docId = `simulated_${Math.random().toString(36).substring(7)}`;
-    
-    /* 
     if (!adminDb) {
       console.error('AdminDb is not initialized');
       return NextResponse.json({ error: 'Database not available' }, { status: 500 })
@@ -87,10 +78,9 @@ export async function POST(req: NextRequest) {
       createdAt: new Date(),
       updatedAt: new Date(),
     })
-    */
 
-    console.log('Tip button created successfully:', docId);
-    return NextResponse.json({ id: docId })
+    console.log('Tip button created successfully:', docRef.id);
+    return NextResponse.json({ id: docRef.id })
   } catch (e) {
     console.error('Error in POST /api/tip-buttons:', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

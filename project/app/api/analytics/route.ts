@@ -9,11 +9,22 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    if (!adminDb) {
+      return NextResponse.json({ error: 'Database not available' }, { status: 500 })
+    }
+
     // Get user from Firestore
     const userDoc = await adminDb.collection('users').doc(firebaseUser.uid).get()
     const user = userDoc.data()
+
+    // Create user document if it doesn't exist
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+      await adminDb.collection('users').doc(firebaseUser.uid).set({
+        email: firebaseUser.email,
+        name: firebaseUser.name || firebaseUser.email?.split('@')[0],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }, { merge: true })
     }
 
     // Get analytics data from Firestore

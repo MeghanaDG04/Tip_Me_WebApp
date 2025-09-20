@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { razorpay } from '@/lib/razorpay'
-import connectDB from '@/lib/mongodb'
-import Tip from '@/lib/models/Tip'
+import { adminDb } from '@/lib/firebaseAdmin'
 import crypto from 'crypto'
 
 export async function POST(req: NextRequest) {
@@ -19,24 +18,39 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid payment signature' }, { status: 400 })
     }
 
-    await connectDB()
+    if (!adminDb) {
+      return NextResponse.json({ error: 'Database not available' }, { status: 500 })
+    }
 
-    // Update tip status
-    const tip = await Tip.findOneAndUpdate(
-      { razorpay_order_id },
-      {
-        razorpay_payment_id,
-        status: 'completed',
-        updatedAt: new Date(),
-      },
-      { new: true }
-    )
+    console.log('Verifying payment for order:', razorpay_order_id)
 
-    if (!tip) {
+    // Update tip status in Firestore
+    const tipRef = adminDb.collection('tips').doc(razorpay_order_id)
+    const tipDoc = await tipRef.get()
+
+    if (!tipDoc.exists) {
       return NextResponse.json({ error: 'Tip not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true, tip })
+    const tipData = tipDoc.data()
+    const creatorAmount = Math.floor(tipData?.amount * 0.95) // 95% to creator, 5% platform fee
+
+    await tipRef.update({
+      razorpay_payment_id,
+      razorpay_signature,
+      status: 'completed',
+      creator_amount: creatorAmount,
+      platform_fee: tipData?.amount - creatorAmount,
+      updatedAt: new Date(),
+    })
+
+    const updatedTip = await tipRef.get()
+    console.log('Payment verified successfully for order:', razorpay_order_id)
+
+    return NextResponse.json({ 
+      success: true, 
+      tip: { id: updatedTip.id, ...updatedTip.data() }
+    })
   } catch (error) {
     console.error('Payment verification error:', error)
     return NextResponse.json({ error: 'Failed to verify payment' }, { status: 500 })
